@@ -27,6 +27,14 @@ type Rules struct {
 	MinNumeric           int
 	MinSymbols           int
 	AllowWhitespace      bool
+
+	// ValidationFunction allows providing a custom validation function for the field.
+	// If set, this function will be used instead of the regular expression-based validation.
+	ValidationFunction func(string) bool
+
+	// UseRegexValidation allows opting out of the ParseAddress validation and reverting to the regular expression-based validation.
+	// If set to true, the regular expression-based validation will be used instead of the ParseAddress validation.
+	UseRegexValidation bool
 }
 
 // Errors returns an array of errors for each validation error that
@@ -39,9 +47,19 @@ func (r Rules) Errors(toValidate string) authboss.ErrorList {
 		return append(errs, FieldError{r.FieldName, errors.New("Cannot be blank")})
 	}
 
-	if r.MustMatch != nil {
-		if !r.MustMatch.MatchString(toValidate) {
-			errs = append(errs, FieldError{r.FieldName, errors.New(r.MatchError)})
+	if r.ValidationFunction != nil {
+		if !r.ValidationFunction(toValidate) {
+			errs = append(errs, FieldError{r.FieldName, errors.New("Invalid value")})
+		}
+	} else if r.UseRegexValidation {
+		if r.MustMatch != nil {
+			if !r.MustMatch.MatchString(toValidate) {
+				errs = append(errs, FieldError{r.FieldName, errors.New(r.MatchError)})
+			}
+		}
+	} else {
+		if !validateEmail(toValidate) {
+			errs = append(errs, FieldError{r.FieldName, errors.New("Invalid email address")})
 		}
 	}
 
@@ -199,4 +217,11 @@ func tallyCharacters(s string) (upper, lower, numeric, symbols, whitespace int) 
 	}
 
 	return upper, lower, numeric, symbols, whitespace
+}
+
+import "net/mail"
+
+func validateEmail(email string) bool {
+	_, err := mail.ParseAddress(email)
+	return err == nil
 }
